@@ -10,7 +10,109 @@ const ScrollInterface = () => {
   const autoScrollRef = useRef(autoScroll);
 
   // Update the ref when autoScroll state changes
+  useEffect(() => {
+    autoScrollRef.current = autoScroll;
+  }, [autoScroll]);
 
+  const sections = [
+    { start: 1, end: 20, direction: 'vertical' },
+    { start: 21, end: 30, direction: 'horizontal' },
+    { start: 31, end: 50, direction: 'vertical' }
+  ];
+
+  const getCurrentSection = useCallback((lastItem: number) => {
+    return sections.find(section => 
+      lastItem >= section.start && lastItem < section.end
+    ) || sections[sections.length - 1];
+  }, [sections]);
+
+  const scrollToNewItem = useCallback(() => {
+    if (!containerRef.current) return;
+    
+    const container = containerRef.current;
+    const currentSection = getCurrentSection(items[items.length - 1]);
+    
+    if (currentSection.direction === 'horizontal') {
+      container.scrollLeft = container.scrollWidth;
+    } else {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [items, getCurrentSection]);
+
+  const loadItems = useCallback(() => {
+    if (isLoading) return;
+
+    const lastItem = items[items.length - 1];
+    const currentSection = getCurrentSection(lastItem);
+
+    if (lastItem >= currentSection.end) {
+      setAutoScroll(false); // Stop auto-scroll when reaching the end
+      return;
+    }
+
+    setIsLoading(true);
+
+    timerRef.current = window.setTimeout(() => {
+      const newItem = lastItem + 1;
+      setItems(prev => [...prev, newItem]);
+      
+      const newSection = getCurrentSection(newItem);
+      setIsHorizontal(newSection.direction === 'horizontal');
+      
+      setIsLoading(false);
+
+      // Auto-scroll to new item if auto-scroll is enabled
+      if (autoScrollRef.current) {
+        scrollToNewItem();
+      }
+    }, 500);
+  }, [items, isLoading, getCurrentSection, scrollToNewItem]);
+
+  // Auto-scroll effect
+  useEffect(() => {
+    if (!autoScroll) return;
+
+    const autoScrollInterval = window.setInterval(() => {
+      if (!isLoading) {
+        loadItems();
+      }
+    }, 1000); // Check every second if we should load next item
+
+    return () => {
+      window.clearInterval(autoScrollInterval);
+    };
+  }, [autoScroll, isLoading, loadItems]);
+
+  // Manual scroll handler
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      // When user scrolls manually, pause auto-scroll temporarily
+      setAutoScroll(false);
+      
+      const { scrollTop, scrollLeft, clientHeight, clientWidth, scrollHeight, scrollWidth } = container;
+      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 50;
+      const isAtRight = scrollLeft + clientWidth >= scrollWidth - 50;
+
+      if ((!isHorizontal && isAtBottom) || (isHorizontal && isAtRight)) {
+        loadItems();
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [isHorizontal, loadItems]);
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        window.clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="relative h-screen w-screen">
